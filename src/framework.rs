@@ -275,7 +275,7 @@ fn start<E: Application>(
                     accum_time += last_frame_inst.elapsed().as_secs_f32();
                     last_frame_inst = Instant::now();
                     frame_count += 1;
-                    if frame_count == 100 {
+                    if frame_count >= 1000 && accum_time > 5.0 {
                         println!(
                             "Avg frame time {}ms",
                             accum_time * 1000.0 / frame_count as f32
