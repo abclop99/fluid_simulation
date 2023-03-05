@@ -10,6 +10,8 @@ const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
+const CAMERA_SPEED: f32 = 50.0;
+
 pub struct Camera {
     /// The point the camera is looking at.
     target: Point3<f32>,
@@ -72,16 +74,16 @@ impl Camera {
         // Perform camera movement
         let timestep = timestep.as_secs_f32();
         if self.rotate_right {
-            self.azimuth += 10.0 * timestep;
+            self.azimuth += CAMERA_SPEED * timestep;
         }
         if self.rotate_left {
-            self.azimuth -= 10.0 * timestep;
+            self.azimuth -= CAMERA_SPEED * timestep;
         }
         if self.rotate_up {
-            self.inclination += 10.0 * timestep;
+            self.inclination += CAMERA_SPEED * timestep;
         }
         if self.rotate_down {
-            self.inclination -= 10.0 * timestep;
+            self.inclination -= CAMERA_SPEED * timestep;
         }
         if self.zoom_in {
             self.distance -= 1.0 * timestep;
@@ -105,11 +107,13 @@ impl Camera {
     }
 
     fn set_proj_view(&mut self, queue: &wgpu::Queue) {
-        let view = Matrix4::from_translation(Vector3::new(0.0, 0.0, self.distance))
-            * Matrix4::from_angle_x(cgmath::Deg(self.inclination))
+        let view = (Matrix4::identity()
+            * Matrix4::from_translation(Point3::origin() - self.target)
             * Matrix4::from_angle_y(cgmath::Deg(self.azimuth))
-            * Matrix4::from_translation(Point3::origin() - self.target);
-        let view = view.invert().unwrap();
+            * Matrix4::from_angle_x(cgmath::Deg(self.inclination))
+            * Matrix4::from_translation(Vector3::new(0.0, 0.0, self.distance)))
+        .invert()
+        .unwrap();
 
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
 
