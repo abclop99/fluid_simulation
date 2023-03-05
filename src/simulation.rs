@@ -49,11 +49,11 @@ impl Application for Simulation {
         config: &wgpu::SurfaceConfiguration,
         _adapter: &wgpu::Adapter,
         device: &wgpu::Device,
-        _queue: &wgpu::Queue,
+        queue: &wgpu::Queue,
     ) -> Self {
         let render_pipeline = create_render_pipeline(config, device);
 
-        let camera = camera::Camera::new(device);
+        let camera = camera::Camera::new(device, queue);
 
         let particle_mesh = shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
 
@@ -76,29 +76,36 @@ impl Application for Simulation {
 
     fn handle_event(&mut self, event: winit::event::WindowEvent) {
         match event {
-            WindowEvent::KeyboardInput { input, .. } => {
-                if let Some(keycode) = input.virtual_keycode {
-                    match keycode {
-                        VirtualKeyCode::A => {
-                            self.camera.zoom_in();
-                        }
-                        VirtualKeyCode::Z => {
-                            self.camera.zoom_out();
-                        }
-                        VirtualKeyCode::Up => {
-                            self.camera.rotate_up();
-                        }
-                        VirtualKeyCode::Down => {
-                            self.camera.rotate_down();
-                        }
-                        VirtualKeyCode::Left => {
-                            self.camera.rotate_left();
-                        }
-                        VirtualKeyCode::Right => {
-                            self.camera.rotate_right();
-                        }
-                        _ => {}
+            WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    },
+                ..
+            } => {
+                let is_pressed = state == ElementState::Pressed;
+                match keycode {
+                    VirtualKeyCode::A => {
+                        self.camera.zoom_in(is_pressed);
                     }
+                    VirtualKeyCode::Z => {
+                        self.camera.zoom_out(is_pressed);
+                    }
+                    VirtualKeyCode::Up => {
+                        self.camera.rotate_up(is_pressed);
+                    }
+                    VirtualKeyCode::Down => {
+                        self.camera.rotate_down(is_pressed);
+                    }
+                    VirtualKeyCode::Left => {
+                        self.camera.rotate_left(is_pressed);
+                    }
+                    VirtualKeyCode::Right => {
+                        self.camera.rotate_right(is_pressed);
+                    }
+                    _ => {}
                 }
             }
             _ => {}

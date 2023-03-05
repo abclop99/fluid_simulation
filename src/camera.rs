@@ -34,16 +34,14 @@ pub struct Camera {
     rotate_down: bool,
     zoom_in: bool,
     zoom_out: bool,
-
-    uniform_needs_update: bool,
 }
 
 impl Camera {
     /// Creates a new instance of `Camera`.
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let (proj_view_buffer, proj_view_bind_group) = Self::create_buffer_and_bind_group(device);
 
-        Self {
+        let mut camera = Self {
             target: Point3::new(0.0, 0.0, 0.0),
             distance: 5.0,
             azimuth: 0.0,
@@ -63,51 +61,50 @@ impl Camera {
             rotate_down: false,
             zoom_in: false,
             zoom_out: false,
+        };
 
-            uniform_needs_update: true,
-        }
+        camera.set_proj_view(queue);
+
+        camera
     }
 
     pub fn update(&mut self, queue: &wgpu::Queue, timestep: Duration) {
-        if self.uniform_needs_update {
-            // Perform camera movement
-            let timestep = timestep.as_secs_f32();
-            if self.rotate_right {
-                self.azimuth += 1.0 * timestep;
+        // Perform camera movement
+        let timestep = timestep.as_secs_f32();
+        if self.rotate_right {
+            self.azimuth += 10.0 * timestep;
+        }
+        if self.rotate_left {
+            self.azimuth -= 10.0 * timestep;
+        }
+        if self.rotate_up {
+            self.inclination += 10.0 * timestep;
+        }
+        if self.rotate_down {
+            self.inclination -= 10.0 * timestep;
+        }
+        if self.zoom_in {
+            self.distance -= 1.0 * timestep;
+            if self.distance < 0.1 {
+                self.distance = 0.1;
             }
-            if self.rotate_left {
-                self.azimuth -= 1.0 * timestep;
-            }
-            if self.rotate_up {
-                self.inclination += 1.0 * timestep;
-            }
-            if self.rotate_down {
-                self.inclination -= 1.0 * timestep;
-            }
-            if self.zoom_in {
-                self.distance -= 5.0 * timestep;
-                if self.distance < 0.1 {
-                    self.distance = 0.1;
-                }
-            }
-            if self.zoom_out {
-                self.distance += 5.0 * timestep;
-            }
+        }
+        if self.zoom_out {
+            self.distance += 1.0 * timestep;
+        }
 
-            let proj_view = self.view_proj();
-
-            let proj_view: [[f32; 4]; 4] = proj_view.into();
-
-            queue.write_buffer(
-                &self.proj_view_buffer,
-                0,
-                bytemuck::cast_slice(&[proj_view]),
-            );
-            self.uniform_needs_update = false;
+        if self.rotate_right
+            || self.rotate_left
+            || self.rotate_up
+            || self.rotate_down
+            || self.zoom_in
+            || self.zoom_out
+        {
+            self.set_proj_view(queue);
         }
     }
 
-    pub fn view_proj(&self) -> Matrix4<f32> {
+    fn set_proj_view(&mut self, queue: &wgpu::Queue) {
         let view = Matrix4::from_translation(Vector3::new(0.0, 0.0, self.distance))
             * Matrix4::from_angle_x(cgmath::Deg(self.inclination))
             * Matrix4::from_angle_y(cgmath::Deg(self.azimuth))
@@ -116,7 +113,15 @@ impl Camera {
 
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
 
-        OPENGL_TO_WGPU_MATRIX * proj * view
+        let proj_view = OPENGL_TO_WGPU_MATRIX * proj * view;
+
+        let proj_view: [[f32; 4]; 4] = proj_view.into();
+
+        queue.write_buffer(
+            &self.proj_view_buffer,
+            0,
+            bytemuck::cast_slice(&[proj_view]),
+        );
     }
 
     /// Gets the bind group layout for Camera.
@@ -158,29 +163,23 @@ impl Camera {
 }
 
 impl Camera {
-    pub fn rotate_right(&mut self) {
-        self.rotate_right = true;
-        self.uniform_needs_update = true;
+    pub fn rotate_right(&mut self, is_pressed: bool) {
+        self.rotate_right = is_pressed;
     }
-    pub fn rotate_left(&mut self) {
-        self.rotate_left = true;
-        self.uniform_needs_update = true;
+    pub fn rotate_left(&mut self, is_pressed: bool) {
+        self.rotate_left = is_pressed;
     }
-    pub fn rotate_up(&mut self) {
-        self.rotate_up = true;
-        self.uniform_needs_update = true;
+    pub fn rotate_up(&mut self, is_pressed: bool) {
+        self.rotate_up = is_pressed;
     }
-    pub fn rotate_down(&mut self) {
-        self.rotate_down = true;
-        self.uniform_needs_update = true;
+    pub fn rotate_down(&mut self, is_pressed: bool) {
+        self.rotate_down = is_pressed;
     }
-    pub fn zoom_in(&mut self) {
-        self.zoom_in = true;
-        self.uniform_needs_update = true;
+    pub fn zoom_in(&mut self, is_pressed: bool) {
+        self.zoom_in = is_pressed;
     }
-    pub fn zoom_out(&mut self) {
-        self.zoom_out = true;
-        self.uniform_needs_update = true;
+    pub fn zoom_out(&mut self, is_pressed: bool) {
+        self.zoom_out = is_pressed;
     }
 }
 
