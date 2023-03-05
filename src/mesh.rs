@@ -1,3 +1,4 @@
+use crate::lighting;
 use cgmath::{Point3, Vector3};
 use wgpu::util::DeviceExt;
 
@@ -73,14 +74,15 @@ impl Vertex {
 pub struct Triangle(pub u16, pub u16, pub u16);
 
 pub trait DrawMesh<'a> {
-    fn draw_mesh(&mut self, mesh: &'a Mesh);
+    fn draw_mesh(&mut self, mesh: &'a Mesh, material: &'a lighting::Material);
 }
 
 impl<'a, 'b> DrawMesh<'a> for wgpu::RenderPass<'b>
 where
     'a: 'b,
 {
-    fn draw_mesh(&mut self, mesh: &'b Mesh) {
+    fn draw_mesh(&mut self, mesh: &'b Mesh, material: &'b lighting::Material) {
+        self.set_bind_group(1, material.get_bind_group(), &[]);
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         self.draw_indexed(0..mesh.index_count, 0, 0..1);

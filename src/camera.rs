@@ -115,16 +115,16 @@ impl Camera {
         .invert()
         .unwrap();
 
+        let view: [[f32; 4]; 4] = view.into();
+
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
 
-        let proj_view = OPENGL_TO_WGPU_MATRIX * proj * view;
-
-        let proj_view: [[f32; 4]; 4] = proj_view.into();
+        let proj: [[f32; 4]; 4] = (OPENGL_TO_WGPU_MATRIX * proj).into();
 
         queue.write_buffer(
             &self.proj_view_buffer,
             0,
-            bytemuck::cast_slice(&[proj_view]),
+            bytemuck::cast_slice(&[proj, view]),
         );
     }
 
@@ -148,7 +148,7 @@ impl Camera {
     fn create_buffer_and_bind_group(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::BindGroup) {
         let proj_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Uniform Buffer"),
-            size: std::mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
+            size: std::mem::size_of::<[[[f32; 4]; 4]; 2]>() as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

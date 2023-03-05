@@ -1,6 +1,8 @@
 use crate::camera;
 use crate::camera::BindCamera;
 use crate::framework::Application;
+use crate::lighting;
+use crate::lighting::BindLights;
 use crate::mesh;
 use std::time::Duration;
 use winit::event::*;
@@ -17,6 +19,9 @@ pub struct Simulation {
 
     /// Mesh used to render the particles.
     particle_mesh: mesh::Mesh,
+    particle_material: lighting::Material,
+
+    light_buffer: lighting::LightBuffer,
 }
 
 impl Simulation {
@@ -54,13 +59,25 @@ impl Application for Simulation {
 
         let camera = camera::Camera::new(device, queue);
 
+        // Particles
         let particle_mesh = mesh::shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
+        let particle_material =
+            lighting::Material::new(device, queue, lighting::MaterialUniform::default());
+
+        // Lights
+        let lights = vec![lighting::LightUniform::new(
+            [10.0, 10.0, 10.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+        )];
+        let light_buffer = lighting::LightBuffer::new(device, queue, lights);
 
         // TODO
         Self {
             render_pipeline,
             particle_mesh,
+            particle_material,
             camera,
+            light_buffer,
         }
     }
 
@@ -151,7 +168,8 @@ impl Application for Simulation {
             let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.bind_camera(&self.camera);
-            render_pass.draw_mesh(&self.particle_mesh);
+            render_pass.bind_light_buffer(&self.light_buffer);
+            render_pass.draw_mesh(&self.particle_mesh, &self.particle_material);
         }
         command_encoder.pop_debug_group();
 
@@ -172,7 +190,10 @@ fn create_render_pipeline(
 
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &[&camera::Camera::bind_group_layout(device)],
+        bind_group_layouts: &[
+            &camera::Camera::bind_group_layout(device),
+            &lighting::Material::bind_group_layout(device),
+        ],
         push_constant_ranges: &[],
     });
 

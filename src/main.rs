@@ -1,5 +1,6 @@
 mod camera;
 mod framework;
+mod lighting;
 mod mesh;
 mod simulation;
 
