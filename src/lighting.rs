@@ -5,14 +5,14 @@ pub struct Material {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct MaterialUniform {
-    ambient: [f32; 4],
-    diffuse: [f32; 4],
-    specular: [f32; 4],
-    emission: [f32; 4],
-    shininess: f32,
+    pub ambient: [f32; 4],
+    pub diffuse: [f32; 4],
+    pub specular: [f32; 4],
+    pub emission: [f32; 4],
+    pub shininess: f32,
 
     /// For alignment
-    _padding: [f32; 3],
+    pub _padding: [f32; 3],
 }
 
 impl Default for MaterialUniform {

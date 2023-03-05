@@ -26,6 +26,10 @@ var<storage, read> lights: array<Light>;
 struct VertexInput {
 	@location(0) position: vec3<f32>,
 	@location(1) normal: vec3<f32>,
+
+	@location(2) particle_position: vec3<f32>,
+	@location(3) particle_mass: f32,
+	@location(4) particle_velocity: vec3<f32>,
 }
 
 struct VertexOutput {
@@ -40,8 +44,9 @@ fn vertex_main(
 ) -> VertexOutput {
 	var out: VertexOutput;
 
-	out.position = camera.proj * camera.view * vec4<f32>(in.position, 1.0);
-	out.position_passthrough = vec4<f32>(in.position, 1.0);
+	let in_position = in.position + in.particle_position;
+	out.position = camera.proj * camera.view * vec4<f32>(in_position, 1.0);
+	out.position_passthrough = vec4<f32>(in_position, 1.0);
 
 	// Transfom the normal
 	out.normal = from_homogeneous( camera.normal_transform * vec4(in.normal, 0.0) );

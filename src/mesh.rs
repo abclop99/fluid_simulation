@@ -74,17 +74,30 @@ impl Vertex {
 pub struct Triangle(pub u16, pub u16, pub u16);
 
 pub trait DrawMesh<'a> {
-    fn draw_mesh(&mut self, mesh: &'a Mesh, material: &'a lighting::Material);
+    fn draw_mesh(
+        &mut self,
+        mesh: &'a Mesh,
+        material: &'a lighting::Material,
+        instance_buffer: &'a wgpu::Buffer,
+        instance_range: std::ops::Range<u32>,
+    );
 }
 
 impl<'a, 'b> DrawMesh<'a> for wgpu::RenderPass<'b>
 where
     'a: 'b,
 {
-    fn draw_mesh(&mut self, mesh: &'b Mesh, material: &'b lighting::Material) {
+    fn draw_mesh(
+        &mut self,
+        mesh: &'b Mesh,
+        material: &'b lighting::Material,
+        instance_buffer: &'b wgpu::Buffer,
+        instance_range: std::ops::Range<u32>,
+    ) {
         self.set_bind_group(1, material.get_bind_group(), &[]);
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+        self.set_vertex_buffer(1, instance_buffer.slice(..));
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        self.draw_indexed(0..mesh.index_count, 0, 0..1);
+        self.draw_indexed(0..mesh.index_count, 0, instance_range);
     }
 }

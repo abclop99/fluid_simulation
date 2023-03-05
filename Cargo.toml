@@ -10,6 +10,7 @@ bytemuck = { version = "1.13.1", features = ["derive"] }
 cgmath = { version = "0.18.0", features = ["swizzle"] }
 env_logger = "0.10.0"
 log = "0.4.17"
+nanorand = { version = "0.7.0", features = ["wyrand"] }
 pollster = "0.3.0"
 rayon = "1.7.0"
 wgpu = "0.15.1"

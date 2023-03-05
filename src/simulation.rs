@@ -1,19 +1,27 @@
-use crate::camera;
-use crate::camera::BindCamera;
-use crate::framework::Application;
-use crate::lighting;
-use crate::lighting::BindLights;
-use crate::mesh;
+use crate::{
+    camera::{self, BindCamera},
+    framework::Application,
+    lighting::{self, BindLights},
+    mesh,
+};
+use nanorand::{Rng, WyRand};
+use rayon::prelude::*;
 use std::time::Duration;
+use wgpu::util::DeviceExt;
 use winit::event::*;
 
 use mesh::DrawMesh;
 
-const PARTICLE_RENDER_RADIUS: f32 = 0.5;
+const PARTICLE_RENDER_RADIUS: f32 = 0.01;
+
+const NUM_PARTICLES: u32 = 100_000;
+const PARTICLE_MASS: f32 = 0.01;
 
 /// The fluid simulation.
 pub struct Simulation {
     render_pipeline: wgpu::RenderPipeline,
+
+    particle_buffers: Vec<wgpu::Buffer>,
 
     camera: camera::Camera,
 
@@ -57,12 +65,54 @@ impl Application for Simulation {
     ) -> Self {
         let render_pipeline = create_render_pipeline(config, device);
 
+        // TODO: Compute pipeline
+
+        // Particle Buffer Data
+        let mut initial_particle_data = vec![0.0f32; (NUM_PARTICLES * 8) as usize];
+        //let mut rng = WyRand::new_seed(42);
+        //let mut unif = || rng.generate::<f32>() * 2f32 - 1f32;
+        initial_particle_data.par_chunks_exact_mut(8).for_each_init(
+            || WyRand::new(),
+            |rng, chunk| {
+                // Position
+                chunk[0] = rng.generate::<f32>() * 2f32 - 1f32;
+                chunk[1] = rng.generate::<f32>() * 2f32 - 1f32;
+                chunk[2] = rng.generate::<f32>() * 2f32 - 1f32;
+                // Mass
+                chunk[3] = PARTICLE_MASS;
+                // Velocity and Padding already 0
+            },
+        );
+
+        // Create particle buffers
+        let mut particle_buffers = Vec::<wgpu::Buffer>::new();
+        for i in 0..2 {
+            particle_buffers.push(
+                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("Particle Buffer {i}")),
+                    contents: bytemuck::cast_slice(&initial_particle_data),
+                    usage: wgpu::BufferUsages::VERTEX
+                        | wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_DST,
+                }),
+            );
+        }
+
+        // TODO: Particle bind groups
+
         let camera = camera::Camera::new(config, device, queue);
 
         // Particles
         let particle_mesh = mesh::shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
-        let particle_material =
-            lighting::Material::new(device, queue, lighting::MaterialUniform::default());
+        let particle_material = lighting::Material::new(
+            device,
+            queue,
+            lighting::MaterialUniform {
+                diffuse: [0.2, 0.2, 1.0, 1.0],
+                specular: [0.1, 0.1, 0.1, 1.0],
+                ..Default::default()
+            },
+        );
 
         // Lights
         let lights = vec![lighting::LightUniform::new(
@@ -74,6 +124,7 @@ impl Application for Simulation {
         // TODO
         Self {
             render_pipeline,
+            particle_buffers,
             particle_mesh,
             particle_material,
             camera,
@@ -169,7 +220,12 @@ impl Application for Simulation {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.bind_camera(&self.camera);
             render_pass.bind_light_buffer(&self.light_buffer);
-            render_pass.draw_mesh(&self.particle_mesh, &self.particle_material);
+            render_pass.draw_mesh(
+                &self.particle_mesh,
+                &self.particle_material,
+                &self.particle_buffers[0],
+                0..NUM_PARTICLES,
+            );
         }
         command_encoder.pop_debug_group();
 
@@ -204,7 +260,14 @@ fn create_render_pipeline(
         vertex: wgpu::VertexState {
             module: &render_shader,
             entry_point: "vertex_main",
-            buffers: &[mesh::Vertex::desc()],
+            buffers: &[
+                mesh::Vertex::desc(),
+                wgpu::VertexBufferLayout {
+                    array_stride: 4 * 4 * 2,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32, 4 => Float32x3],
+                },
+            ],
         },
         fragment: Some(wgpu::FragmentState {
             module: &render_shader,
