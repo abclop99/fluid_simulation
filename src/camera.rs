@@ -96,12 +96,6 @@ impl Camera {
 
             let proj_view = self.view_proj();
 
-            // Test point (1, 1, 1) in world space transformed by the view-projection matrix.
-            println!(
-                "Test point: {:?}",
-                proj_view * Point3::new(1.0, 1.0, 1.0).to_homogeneous()
-            );
-
             let proj_view: [[f32; 4]; 4] = proj_view.into();
 
             queue.write_buffer(
@@ -118,6 +112,7 @@ impl Camera {
             * Matrix4::from_angle_x(cgmath::Deg(self.inclination))
             * Matrix4::from_angle_y(cgmath::Deg(self.azimuth))
             * Matrix4::from_translation(Point3::origin() - self.target);
+        let view = view.invert().unwrap();
 
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
 

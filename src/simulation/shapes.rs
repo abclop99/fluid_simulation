@@ -52,7 +52,5 @@ pub fn icosahedron(device: &wgpu::Device, radius: f32) -> Mesh {
         Triangle(9, 8, 1),
     ];
 
-    println!("Vertices: {:?}", vertices);
-
     Mesh::new(device, vertices, triangles)
 }
