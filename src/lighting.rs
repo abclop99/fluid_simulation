@@ -10,6 +10,9 @@ pub struct MaterialUniform {
     specular: [f32; 4],
     emission: [f32; 4],
     shininess: f32,
+
+    /// For alignment
+    _padding: [f32; 3],
 }
 
 impl Default for MaterialUniform {
@@ -20,6 +23,7 @@ impl Default for MaterialUniform {
             specular: [0.9, 0.9, 0.9, 1.0],
             emission: [0.0, 0.0, 0.0, 1.0],
             shininess: 100.0,
+            _padding: [0.0, 0.0, 0.0],
         }
     }
 }
@@ -121,7 +125,7 @@ impl LightBuffer {
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },

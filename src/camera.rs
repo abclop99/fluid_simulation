@@ -115,16 +115,20 @@ impl Camera {
         .invert()
         .unwrap();
 
+        // This seems to work, but I'm not sure why.
+        // I don't feel like figuring it out right now.
+        // TODO: make sure translation works correctly
+        let normal_transform: [[f32; 4]; 4] = view.into();
+
         let view: [[f32; 4]; 4] = view.into();
 
         let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
-
         let proj: [[f32; 4]; 4] = (OPENGL_TO_WGPU_MATRIX * proj).into();
 
         queue.write_buffer(
             &self.proj_view_buffer,
             0,
-            bytemuck::cast_slice(&[proj, view]),
+            bytemuck::cast_slice(&[proj, view, normal_transform]),
         );
     }
 
@@ -134,7 +138,7 @@ impl Camera {
             label: Some("Camera Bind Group Layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -148,7 +152,7 @@ impl Camera {
     fn create_buffer_and_bind_group(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::BindGroup) {
         let proj_view_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Camera Uniform Buffer"),
-            size: std::mem::size_of::<[[[f32; 4]; 4]; 2]>() as wgpu::BufferAddress,
+            size: std::mem::size_of::<[[[f32; 4]; 4]; 3]>() as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });

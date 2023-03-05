@@ -193,6 +193,7 @@ fn create_render_pipeline(
         bind_group_layouts: &[
             &camera::Camera::bind_group_layout(device),
             &lighting::Material::bind_group_layout(device),
+            &lighting::LightBuffer::bind_group_layout(device),
         ],
         push_constant_ranges: &[],
     });
