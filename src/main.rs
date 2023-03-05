@@ -1,3 +1,4 @@
+mod camera;
 mod framework;
 mod simulation;
 

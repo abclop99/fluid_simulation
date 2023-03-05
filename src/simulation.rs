@@ -1,17 +1,36 @@
+use crate::camera;
+use crate::camera::BindCamera;
 use crate::framework::Application;
+use std::time::Duration;
+use winit::event::*;
 
 mod mesh;
 use mesh::DrawMesh;
 mod shapes;
 
-const PARTICLE_RENDER_RADIUS: f32 = 0.1;
+const PARTICLE_RENDER_RADIUS: f32 = 0.5;
 
 /// The fluid simulation.
 pub struct Simulation {
     render_pipeline: wgpu::RenderPipeline,
 
+    camera: camera::Camera,
+
     /// Mesh used to render the particles.
     particle_mesh: mesh::Mesh,
+}
+
+impl Simulation {
+    /// Applies CPU-side updates
+    fn update(
+        &mut self,
+        _view: &wgpu::TextureView,
+        _device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        timestep: Duration,
+    ) {
+        self.camera.update(queue, timestep);
+    }
 }
 
 impl Application for Simulation {
@@ -34,12 +53,15 @@ impl Application for Simulation {
     ) -> Self {
         let render_pipeline = create_render_pipeline(config, device);
 
+        let camera = camera::Camera::new(device);
+
         let particle_mesh = shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
 
         // TODO
         Self {
             render_pipeline,
             particle_mesh,
+            camera,
         }
     }
 
@@ -52,17 +74,57 @@ impl Application for Simulation {
         // TODO
     }
 
-    fn update(&mut self, _event: winit::event::WindowEvent) {
-        // empty
+    fn handle_event(&mut self, event: winit::event::WindowEvent) {
+        match event {
+            WindowEvent::KeyboardInput { input, .. } => {
+                if let Some(keycode) = input.virtual_keycode {
+                    match keycode {
+                        VirtualKeyCode::A => {
+                            self.camera.zoom_in();
+                        }
+                        VirtualKeyCode::Z => {
+                            self.camera.zoom_out();
+                        }
+                        VirtualKeyCode::Up => {
+                            self.camera.rotate_up();
+                        }
+                        VirtualKeyCode::Down => {
+                            self.camera.rotate_down();
+                        }
+                        VirtualKeyCode::Left => {
+                            self.camera.rotate_left();
+                        }
+                        VirtualKeyCode::Right => {
+                            self.camera.rotate_right();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
-    fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
+    fn render(
+        &mut self,
+        view: &wgpu::TextureView,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        timestep: Duration,
+    ) {
+        self.update(view, device, queue, timestep);
+
         // Create render pass descriptor and its color attachments
         let color_attachment = [Some(wgpu::RenderPassColorAttachment {
             view,
             resolve_target: None,
             ops: wgpu::Operations {
-                load: wgpu::LoadOp::Load,
+                load: wgpu::LoadOp::Clear(wgpu::Color {
+                    r: 0.1,
+                    g: 0.2,
+                    b: 0.3,
+                    a: 1.0,
+                }),
                 store: true,
             },
         })];
@@ -82,6 +144,7 @@ impl Application for Simulation {
         {
             let mut render_pass = command_encoder.begin_render_pass(&render_pass_descriptor);
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.bind_camera(&self.camera);
             render_pass.draw_mesh(&self.particle_mesh);
         }
         command_encoder.pop_debug_group();
@@ -103,7 +166,7 @@ fn create_render_pipeline(
 
     let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &[],
+        bind_group_layouts: &[&camera::Camera::bind_group_layout(device)],
         push_constant_ranges: &[],
     });
 
@@ -127,7 +190,15 @@ fn create_render_pipeline(
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
-        primitive: wgpu::PrimitiveState::default(),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            polygon_mode: wgpu::PolygonMode::Fill,
+            unclipped_depth: false,
+            conservative: false,
+        },
         depth_stencil: None, // TODO: Enable depth testing.
         multisample: wgpu::MultisampleState::default(),
         multiview: None,

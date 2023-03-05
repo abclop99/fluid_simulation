@@ -31,7 +31,7 @@ impl Mesh {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     /// Position of the vertex. It is an array so that Bytemuck::Pod works.
     position: [f32; 3],

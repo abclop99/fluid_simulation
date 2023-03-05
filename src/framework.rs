@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::{
     event::{self, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -69,10 +69,16 @@ pub trait Application: 'static + Sized {
     );
 
     /// Called for any WindowEvent that is not handled by the framework.
-    fn update(&mut self, event: WindowEvent);
+    fn handle_event(&mut self, event: WindowEvent);
 
     /// Called every frame.
-    fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue);
+    fn render(
+        &mut self,
+        view: &wgpu::TextureView,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        timestep: Duration,
+    );
 }
 
 struct Setup {
@@ -208,9 +214,7 @@ fn start<E: Application>(
     log::info!("Initializing the program...");
     let mut program = E::init(&config, &adapter, &device, &queue);
 
-    #[cfg(not(target_arch = "wasm32"))]
     let mut last_frame_inst = Instant::now();
-    #[cfg(not(target_arch = "wasm32"))]
     let (mut frame_count, mut accum_time) = (0, 0.0);
 
     log::info!("Entering render loop...");
@@ -253,7 +257,6 @@ fn start<E: Application>(
                 | WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
                 }
-                #[cfg(not(target_arch = "wasm32"))]
                 WindowEvent::KeyboardInput {
                     input:
                         event::KeyboardInput {
@@ -266,19 +269,21 @@ fn start<E: Application>(
                     println!("{:#?}", instance.generate_report());
                 }
                 _ => {
-                    program.update(event);
+                    program.handle_event(event);
                 }
             },
             event::Event::RedrawRequested(_) => {
-                #[cfg(not(target_arch = "wasm32"))]
+                let timestep = last_frame_inst.elapsed();
+
                 {
-                    accum_time += last_frame_inst.elapsed().as_secs_f32();
+                    accum_time += timestep.as_secs_f32();
                     last_frame_inst = Instant::now();
                     frame_count += 1;
                     if frame_count >= 1000 && accum_time > 5.0 {
                         println!(
-                            "Avg frame time {}ms",
-                            accum_time * 1000.0 / frame_count as f32
+                            "Avg frame time {}ms, timestep {}ms",
+                            accum_time * 1000.0 / frame_count as f32,
+                            timestep.as_secs_f32() * 1000.0
                         );
                         accum_time = 0.0;
                         frame_count = 0;
@@ -298,7 +303,7 @@ fn start<E: Application>(
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                program.render(&view, &device, &queue);
+                program.render(&view, &device, &queue, timestep);
 
                 frame.present();
             }
