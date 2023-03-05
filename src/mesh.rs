@@ -1,6 +1,8 @@
 use cgmath::{Point3, Vector3};
 use wgpu::util::DeviceExt;
 
+pub mod shapes;
+
 pub struct Mesh {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,

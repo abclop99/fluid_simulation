@@ -1,5 +1,6 @@
 mod camera;
 mod framework;
+mod mesh;
 mod simulation;
 
 fn main() {

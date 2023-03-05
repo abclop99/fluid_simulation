@@ -1,12 +1,11 @@
 use crate::camera;
 use crate::camera::BindCamera;
 use crate::framework::Application;
+use crate::mesh;
 use std::time::Duration;
 use winit::event::*;
 
-mod mesh;
 use mesh::DrawMesh;
-mod shapes;
 
 const PARTICLE_RENDER_RADIUS: f32 = 0.5;
 
@@ -55,7 +54,7 @@ impl Application for Simulation {
 
         let camera = camera::Camera::new(device, queue);
 
-        let particle_mesh = shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
+        let particle_mesh = mesh::shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
 
         // TODO
         Self {

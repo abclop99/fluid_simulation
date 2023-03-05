@@ -4,7 +4,7 @@
 use cgmath::prelude::*;
 use rayon::prelude::*;
 
-use crate::simulation::mesh::{Mesh, Triangle, Vertex};
+use crate::mesh::{Mesh, Triangle, Vertex};
 
 pub fn icosahedron(device: &wgpu::Device, radius: f32) -> Mesh {
     // Create the 12 vertices of the icosahedron.
