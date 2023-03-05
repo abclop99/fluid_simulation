@@ -34,8 +34,9 @@ struct VertexInput {
 
 struct VertexOutput {
 	@builtin(position) position: vec4<f32>,
-	@location(0) position_passthrough: vec4<f32>,
-	@location(1) normal: vec3<f32>,
+	@location(0) particle_position: vec3<f32>,
+	@location(1) fragment_position: vec4<f32>,
+	@location(2) normal: vec3<f32>,
 }
 
 @vertex
@@ -46,7 +47,7 @@ fn vertex_main(
 
 	let in_position = in.position + in.particle_position;
 	out.position = camera.proj * camera.view * vec4<f32>(in_position, 1.0);
-	out.position_passthrough = vec4<f32>(in_position, 1.0);
+	out.fragment_position = vec4<f32>(in_position, 1.0);
 
 	// Transfom the normal
 	out.normal = from_homogeneous( camera.normal_transform * vec4(in.normal, 0.0) );
@@ -59,7 +60,7 @@ fn fragment_main(
 	in: VertexOutput
 ) -> @location(0) vec4<f32> {
 
-	let fragment_position = camera.view * in.position_passthrough;
+	let fragment_position = camera.view * in.fragment_position;
 
 	let viewer = normalize( vec3<f32>(0.0, 0.0, 0.0) - from_homogeneous(fragment_position) );
 	let normal = normalize( in.normal );
@@ -73,8 +74,8 @@ fn fragment_main(
 			break;
 		}
 
-		//let light_pos = camera.view * lights[light_num].position;
-		let light_pos = lights[light_num].position;
+		let light_pos = camera.view * lights[light_num].position;
+		//let light_pos = lights[light_num].position;
 		let light_color = lights[light_num].color;
 
 		// Points toward light; allows light to be a vector.

@@ -3,6 +3,7 @@ use crate::{
     framework::Application,
     lighting::{self, BindLights},
     mesh,
+    texture::Texture,
 };
 use nanorand::{Rng, WyRand};
 use rayon::prelude::*;
@@ -12,7 +13,7 @@ use winit::event::*;
 
 use mesh::DrawMesh;
 
-const PARTICLE_RENDER_RADIUS: f32 = 0.01;
+const PARTICLE_RENDER_RADIUS: f32 = 0.008;
 
 const NUM_PARTICLES: u32 = 100_000;
 const PARTICLE_MASS: f32 = 0.01;
@@ -20,6 +21,7 @@ const PARTICLE_MASS: f32 = 0.01;
 /// The fluid simulation.
 pub struct Simulation {
     render_pipeline: wgpu::RenderPipeline,
+    depth_texture: Texture,
 
     particle_buffers: Vec<wgpu::Buffer>,
 
@@ -71,9 +73,9 @@ impl Application for Simulation {
         let mut initial_particle_data = vec![0.0f32; (NUM_PARTICLES * 8) as usize];
         //let mut rng = WyRand::new_seed(42);
         //let mut unif = || rng.generate::<f32>() * 2f32 - 1f32;
-        initial_particle_data.par_chunks_exact_mut(8).for_each_init(
-            || WyRand::new(),
-            |rng, chunk| {
+        initial_particle_data
+            .par_chunks_exact_mut(8)
+            .for_each_init(WyRand::new, |rng, chunk| {
                 // Position
                 chunk[0] = rng.generate::<f32>() * 2f32 - 1f32;
                 chunk[1] = rng.generate::<f32>() * 2f32 - 1f32;
@@ -81,8 +83,7 @@ impl Application for Simulation {
                 // Mass
                 chunk[3] = PARTICLE_MASS;
                 // Velocity and Padding already 0
-            },
-        );
+            });
 
         // Create particle buffers
         let mut particle_buffers = Vec::<wgpu::Buffer>::new();
@@ -102,23 +103,28 @@ impl Application for Simulation {
 
         let camera = camera::Camera::new(config, device, queue);
 
+        let depth_texture = Texture::create_depth_texture(device, config, "Depth Texture");
+
         // Particles
         let particle_mesh = mesh::shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
         let particle_material = lighting::Material::new(
             device,
             queue,
             lighting::MaterialUniform {
-                diffuse: [0.2, 0.2, 1.0, 1.0],
+                diffuse: [0.5, 0.5, 1.0, 1.0],
                 specular: [0.1, 0.1, 0.1, 1.0],
+                shininess: 32.0,
                 ..Default::default()
             },
         );
 
         // Lights
-        let lights = vec![lighting::LightUniform::new(
-            [10.0, 10.0, 10.0, 1.0],
-            [1.0, 1.0, 1.0, 1.0],
-        )];
+        let lights = vec![
+            lighting::LightUniform::new([1.5, 5.0, 2.0, 1.0], [0.7, 0.4, 0.4, 1.0]),
+            lighting::LightUniform::new([1.5, 5.0, -2.0, 1.0], [0.3, 0.6, 0.3, 1.0]),
+            lighting::LightUniform::new([-2.0, 4.0, 2.0, 1.0], [0.5, 0.5, 0.8, 1.0]),
+            lighting::LightUniform::new([0.0, -5.0, 0.0, 1.0], [0.3, 0.3, 0.3, 1.0]),
+        ];
         let light_buffer = lighting::LightBuffer::new(device, queue, lights);
 
         // TODO
@@ -128,6 +134,7 @@ impl Application for Simulation {
             particle_mesh,
             particle_material,
             camera,
+            depth_texture,
             light_buffer,
         }
     }
@@ -139,6 +146,7 @@ impl Application for Simulation {
         _queue: &wgpu::Queue,
     ) {
         self.camera.resize(config.width, config.height);
+        self.depth_texture = Texture::create_depth_texture(_device, config, "Depth Texture");
     }
 
     fn handle_event(&mut self, event: winit::event::WindowEvent) {
@@ -205,7 +213,14 @@ impl Application for Simulation {
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &color_attachment,
-            depth_stencil_attachment: None, // TODO: Add depth buffer
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.depth_texture.view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: true,
+                }),
+                stencil_ops: None,
+            }),
         };
 
         // Get the command encoder
@@ -290,7 +305,13 @@ fn create_render_pipeline(
             unclipped_depth: false,
             conservative: false,
         },
-        depth_stencil: None, // TODO: Enable depth testing.
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: Texture::DEPTH_FORMAT,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
     });
