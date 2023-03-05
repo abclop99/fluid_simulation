@@ -10,7 +10,8 @@ const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-const CAMERA_SPEED: f32 = 50.0;
+const ROTATION_SPEED: f32 = 100.0;
+const ZOOM_SPEED: f32 = 2.0;
 
 pub struct Camera {
     /// The point the camera is looking at.
@@ -36,12 +37,22 @@ pub struct Camera {
     rotate_down: bool,
     zoom_in: bool,
     zoom_out: bool,
+
+    /// When the uniform buffer needs to be updated
+    /// because of other changes.
+    uniform_needs_update: bool,
 }
 
 impl Camera {
     /// Creates a new instance of `Camera`.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+    pub fn new(
+        config: &wgpu::SurfaceConfiguration,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Self {
         let (proj_view_buffer, proj_view_bind_group) = Self::create_buffer_and_bind_group(device);
+
+        let aspect = config.width as f32 / config.height as f32;
 
         let mut camera = Self {
             target: Point3::new(0.0, 0.0, 0.0),
@@ -50,7 +61,7 @@ impl Camera {
             inclination: 0.0,
 
             fovy: 45.0,
-            aspect: 1.0,
+            aspect,
             znear: 0.1,
             zfar: 200.0,
 
@@ -63,6 +74,8 @@ impl Camera {
             rotate_down: false,
             zoom_in: false,
             zoom_out: false,
+
+            uniform_needs_update: true,
         };
 
         camera.set_proj_view(queue);
@@ -70,29 +83,45 @@ impl Camera {
         camera
     }
 
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.aspect = width as f32 / height as f32;
+        self.uniform_needs_update = true;
+
+        println!("Aspect: {}", self.aspect);
+    }
+
     pub fn update(&mut self, queue: &wgpu::Queue, timestep: Duration) {
         // Perform camera movement
         let timestep = timestep.as_secs_f32();
         if self.rotate_right {
-            self.azimuth += CAMERA_SPEED * timestep;
+            self.azimuth += ROTATION_SPEED * timestep;
         }
         if self.rotate_left {
-            self.azimuth -= CAMERA_SPEED * timestep;
+            self.azimuth -= ROTATION_SPEED * timestep;
         }
         if self.rotate_up {
-            self.inclination += CAMERA_SPEED * timestep;
+            self.inclination += ROTATION_SPEED * timestep;
+            if self.inclination > 89.0 {
+                self.inclination = 89.0;
+            }
         }
         if self.rotate_down {
-            self.inclination -= CAMERA_SPEED * timestep;
+            self.inclination -= ROTATION_SPEED * timestep;
+            if self.inclination < -89.0 {
+                self.inclination = -89.0;
+            }
         }
         if self.zoom_in {
-            self.distance -= 1.0 * timestep;
+            self.distance -= self.distance * ZOOM_SPEED * timestep;
             if self.distance < 0.1 {
                 self.distance = 0.1;
             }
         }
         if self.zoom_out {
-            self.distance += 1.0 * timestep;
+            self.distance += self.distance * ZOOM_SPEED * timestep;
+            if self.distance > self.zfar {
+                self.distance = self.zfar;
+            }
         }
 
         if self.rotate_right
@@ -101,6 +130,7 @@ impl Camera {
             || self.rotate_down
             || self.zoom_in
             || self.zoom_out
+            || self.uniform_needs_update
         {
             self.set_proj_view(queue);
         }

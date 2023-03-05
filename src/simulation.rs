@@ -57,7 +57,7 @@ impl Application for Simulation {
     ) -> Self {
         let render_pipeline = create_render_pipeline(config, device);
 
-        let camera = camera::Camera::new(device, queue);
+        let camera = camera::Camera::new(config, device, queue);
 
         // Particles
         let particle_mesh = mesh::shapes::icosahedron(device, PARTICLE_RENDER_RADIUS);
@@ -83,11 +83,11 @@ impl Application for Simulation {
 
     fn resize(
         &mut self,
-        _config: &wgpu::SurfaceConfiguration,
+        config: &wgpu::SurfaceConfiguration,
         _device: &wgpu::Device,
         _queue: &wgpu::Queue,
     ) {
-        // TODO
+        self.camera.resize(config.width, config.height);
     }
 
     fn handle_event(&mut self, event: winit::event::WindowEvent) {
