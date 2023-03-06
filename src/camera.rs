@@ -86,8 +86,6 @@ impl Camera {
     pub fn resize(&mut self, width: u32, height: u32) {
         self.aspect = width as f32 / height as f32;
         self.uniform_needs_update = true;
-
-        println!("Aspect: {}", self.aspect);
     }
 
     pub fn update(&mut self, queue: &wgpu::Queue, timestep: Duration) {

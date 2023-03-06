@@ -115,7 +115,6 @@ async fn setup<E: Application>(title: &str) -> Setup {
     let (size, surface) = unsafe {
         let size = window.inner_size();
 
-        #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
         let surface = instance.create_surface(&window).unwrap();
 
         (size, surface)
@@ -125,11 +124,8 @@ async fn setup<E: Application>(title: &str) -> Setup {
             .await
             .expect("No suitable GPU adapters found on the system!");
 
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let adapter_info = adapter.get_info();
-        println!("Using {} ({:?})", adapter_info.name, adapter_info.backend);
-    }
+    let adapter_info = adapter.get_info();
+    println!("Using {} ({:?})", adapter_info.name, adapter_info.backend);
 
     let optional_features = E::optional_features();
     let required_features = E::required_features();
@@ -281,9 +277,12 @@ fn start<E: Application>(
                     frame_count += 1;
                     if frame_count >= 1000 && accum_time > 5.0 {
                         println!(
-                            "Avg frame time {}ms, timestep {}ms",
+                            "Avg frame time {}ms, timestep {}ms, {} frames / {}ms = {} FPS",
                             accum_time * 1000.0 / frame_count as f32,
-                            timestep.as_secs_f32() * 1000.0
+                            timestep.as_secs_f32() * 1000.0,
+                            frame_count,
+                            accum_time * 1000.0,
+                            frame_count as f32 / accum_time,
                         );
                         accum_time = 0.0;
                         frame_count = 0;

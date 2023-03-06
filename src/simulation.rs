@@ -369,7 +369,7 @@ fn create_render_pipeline(
         push_constant_ranges: &[],
     });
 
-    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(&render_pipeline_layout),
         vertex: wgpu::VertexState {
@@ -414,9 +414,7 @@ fn create_render_pipeline(
         }),
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
-    });
-
-    render_pipeline
+    })
 }
 
 fn create_compute_pipeline(
@@ -431,59 +429,54 @@ fn create_compute_pipeline(
 
     let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Compute Pipeline Layout"),
-        bind_group_layouts: &[&compute_bind_group_layout],
+        bind_group_layouts: &[compute_bind_group_layout],
         push_constant_ranges: &[],
     });
 
-    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("Compute Pipeline"),
         layout: Some(&compute_pipeline_layout),
         module: &compute_shader,
         entry_point: "main",
-    });
-
-    compute_pipeline
+    })
 }
 
 fn compute_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    let compute_bind_group_layout =
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Compute Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(
-                            std::mem::size_of::<SimulationParams>() as _,
-                        ),
-                    },
-                    count: None,
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Compute Bind Group Layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(
+                        std::mem::size_of::<SimulationParams>() as _,
+                    ),
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 32) as _),
-                    },
-                    count: None,
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 32) as _),
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 32) as _),
-                    },
-                    count: None,
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 32) as _),
                 },
-                // TODO: Add more bindings here.
-            ],
-        });
-    compute_bind_group_layout
+                count: None,
+            },
+        ],
+    })
 }
