@@ -205,7 +205,25 @@ fn start<E: Application>(
     let mut config = surface
         .get_default_config(&adapter, size.width, size.height)
         .expect("Surface isn't supported by the adapter.");
+
+    let surface_caps = surface.get_capabilities(&adapter);
+
+    // Change the format to BgraUnorm if it is supported.
+    // This format is the only one supported by Wayland on Nvidia.
+    if surface_caps
+        .formats
+        .contains(&wgpu::TextureFormat::Bgra8Unorm)
+    {
+        config.format = wgpu::TextureFormat::Bgra8Unorm;
+    }
+
+    // Change the present mode to AutoVsync. It is supported on all platforms.
+    config.present_mode = wgpu::PresentMode::AutoVsync;
+
     surface.configure(&device, &config);
+
+    println!("Surface caps: {:?}", surface_caps);
+    println!("Surface config: {:?}", config);
 
     log::info!("Initializing the program...");
     let mut program = E::init(&config, &adapter, &device, &queue);

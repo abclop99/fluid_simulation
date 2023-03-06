@@ -17,7 +17,7 @@ const PARTICLES_PER_WORKGROUP: u32 = 256;
 
 const PARTICLE_RENDER_RADIUS: f32 = 0.01;
 
-const NUM_PARTICLES: u32 = 1_000;
+const NUM_PARTICLES: u32 = 5_000;
 const PARTICLE_MASS: f32 = 0.01;
 
 /// The fluid simulation.

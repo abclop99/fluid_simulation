@@ -50,7 +50,7 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
 		let e = normalize(other_position - position);
 
 		if distance != 0.0 {
-			velocity += inverseSqrt(distance) * e * 0.0000001;
+			velocity += inverseSqrt(distance) * e * 0.0000000001;
 		}
 
 		position += velocity * 0.001;
