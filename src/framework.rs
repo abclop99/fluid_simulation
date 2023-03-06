@@ -222,9 +222,6 @@ fn start<E: Application>(
 
     surface.configure(&device, &config);
 
-    println!("Surface caps: {:?}", surface_caps);
-    println!("Surface config: {:?}", config);
-
     log::info!("Initializing the program...");
     let mut program = E::init(&config, &adapter, &device, &queue);
 
