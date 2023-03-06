@@ -89,16 +89,16 @@ impl Application for Simulation {
 
         // Simulation Parameters
         let simulation_params = SimulationParams {
-            timestep: 0.00,
+            timestep: 0.01,
             viscosity: 0.0,
             support_radius: 0.0,
             smoothing_radius: 0.0,
             bounding_box_min: [-1.0, -1.0, -1.0],
             bounding_box_max: [1.0, 1.0, 1.0],
+            bounding_box_ks: 10.0,
+            bounding_box_kd: 0.01,
             gravity: [0.0, -9.81, 0.0],
 
-            _padding0: [0.0; 1],
-            _padding1: [0.0; 1],
             _padding2: [0.0; 1],
         };
         let simulation_params_buffer =
@@ -347,10 +347,12 @@ struct SimulationParams {
     smoothing_radius: f32,
     /// Lower bound of the bounding box.
     bounding_box_min: [f32; 3],
-    _padding0: [f32; 1],
+    /// The "spring constant" for collisions with the bounding box.
+    bounding_box_ks: f32,
     /// Upper bound of the bounding box.
     bounding_box_max: [f32; 3],
-    _padding1: [f32; 1],
+    /// The "damping constant" for collisions with the bounding box.
+    bounding_box_kd: f32,
     /// Gravity vector.
     gravity: [f32; 3],
     _padding2: [f32; 1],

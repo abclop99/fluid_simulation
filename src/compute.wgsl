@@ -4,9 +4,9 @@ struct SimParams {
 	support_radius: f32,
 	smoothing_radius: f32,
 	bounding_box_min: vec3<f32>,
-	_padding0: f32,
+	bounding_box_ks: f32,
 	bounding_box_max: vec3<f32>,
-	_padding1: f32,
+	bounding_box_kd: f32,
 	gravity: vec3<f32>,
 	_padding2: f32,
 }
@@ -30,11 +30,36 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
 		return;
 	}
 
-	var position = particles_src[index].position;
+	let position = particles_src[index].position;
 	let mass = particles_src[index].mass;
-	var velocity = particles_src[index].velocity;
+	let  velocity = particles_src[index].velocity;
+
+	// dv/dt
+	var acceleration = vec3<f32>();
+
+	// External forces, not including gravity.
+	var forces = vec3<f32>();
+
+	// Bounding boxes
+	let bounding_box_forces = vec3<f32>(
+		max(params.bounding_box_min.x - position.x, 0.0),
+		max(params.bounding_box_min.y - position.y, 0.0),
+		max(params.bounding_box_min.z - position.z, 0.0),
+	) * params.bounding_box_ks + vec3<f32>(
+		min(params.bounding_box_max.x - position.x, 0.0),
+		min(params.bounding_box_max.y - position.y, 0.0),
+		min(params.bounding_box_max.z - position.z, 0.0),
+	) * params.bounding_box_ks;
+	// Damping
+	let bounding_box_damping_force = vec3<f32>(
+		select(-velocity.x, 0.0, bounding_box_forces.x == 0.0),
+		select(-velocity.y, 0.0, bounding_box_forces.y == 0.0),
+		select(-velocity.z, 0.0, bounding_box_forces.z == 0.0)
+	) * params.bounding_box_kd;
+
+	forces += bounding_box_forces + bounding_box_damping_force;
 	
-	// Test by simulating gravity to other particles
+	// Loop over all other particles
 	var i: u32 = 0u;
 	loop {
 		if i >= total {
@@ -43,23 +68,22 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
 		if i == index {
 			continue;
 		}
+
+		// TODO
 		
-		let other_position = particles_src[i].position;
-
-		let distance = distance(position, other_position);
-		let e = normalize(other_position - position);
-
-		if distance != 0.0 {
-			velocity += inverseSqrt(distance) * e * 0.0000000001;
-		}
-
-		position += velocity * params.timestep;
-
 		continuing {
 			i++;
 		}
 	}
 
+	// 
+	acceleration += params.gravity;
+	acceleration += forces / mass;
+
+	// Forward Euler Integration
+	let new_velocity = velocity + acceleration * params.timestep;
+	let new_position = position + new_velocity * params.timestep;
+
 	// Write back
-	particles_dst[index] = Particle(position, mass, velocity);
+	particles_dst[index] = Particle(new_position, mass, new_velocity);
 }
