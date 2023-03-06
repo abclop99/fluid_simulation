@@ -298,6 +298,7 @@ impl Application for Simulation {
             compute_pass.set_bind_group(0, &self.particle_bind_groups[self.current_buffer], &[]);
             compute_pass.dispatch_workgroups(self.work_group_count, 1, 1);
         }
+        command_encoder.pop_debug_group();
 
         // Render pass
         command_encoder.push_debug_group("Render Pass");
