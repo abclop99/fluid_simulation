@@ -53,7 +53,7 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
 			velocity += inverseSqrt(distance) * e * 0.0000000001;
 		}
 
-		position += velocity * 0.001;
+		position += velocity * params.timestep;
 
 		continuing {
 			i++;

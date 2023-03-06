@@ -54,6 +54,14 @@ impl Simulation {
         timestep: Duration,
     ) {
         self.camera.update(queue, timestep);
+
+        // Update simulation parameters
+        self.simulation_params.timestep = timestep.as_secs_f32();
+        queue.write_buffer(
+            &self.simulation_params_buffer,
+            0,
+            bytemuck::cast_slice(&[self.simulation_params]),
+        );
     }
 }
 
