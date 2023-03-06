@@ -98,7 +98,9 @@ fn fragment_main(
 			light_color, material.shininess,
 		);
 
-		light_num++;
+		continuing {
+			light_num++;
+		}
 	}
 
 	return frag_color;

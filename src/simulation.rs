@@ -13,17 +13,24 @@ use winit::event::*;
 
 use mesh::DrawMesh;
 
-const PARTICLE_RENDER_RADIUS: f32 = 0.008;
+const PARTICLES_PER_WORKGROUP: u32 = 256;
 
-const NUM_PARTICLES: u32 = 100_000;
+const PARTICLE_RENDER_RADIUS: f32 = 0.01;
+
+const NUM_PARTICLES: u32 = 1_000;
 const PARTICLE_MASS: f32 = 0.01;
 
 /// The fluid simulation.
 pub struct Simulation {
+    simulation_params: SimulationParams,
+    simulation_params_buffer: wgpu::Buffer,
+
+    compute_pipeline: wgpu::ComputePipeline,
     render_pipeline: wgpu::RenderPipeline,
     depth_texture: Texture,
 
     particle_buffers: Vec<wgpu::Buffer>,
+    particle_bind_groups: Vec<wgpu::BindGroup>,
 
     camera: camera::Camera,
 
@@ -32,6 +39,9 @@ pub struct Simulation {
     particle_material: lighting::Material,
 
     light_buffer: lighting::LightBuffer,
+
+    work_group_count: u32,
+    current_buffer: usize,
 }
 
 impl Simulation {
@@ -65,14 +75,33 @@ impl Application for Simulation {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self {
+        let compute_bind_group_layout = compute_bind_group_layout(device);
+        let compute_pipeline = create_compute_pipeline(config, device, &compute_bind_group_layout);
         let render_pipeline = create_render_pipeline(config, device);
 
-        // TODO: Compute pipeline
+        // Simulation Parameters
+        let simulation_params = SimulationParams {
+            timestep: 0.00,
+            viscosity: 0.0,
+            support_radius: 0.0,
+            smoothing_radius: 0.0,
+            bounding_box_min: [-1.0, -1.0, -1.0],
+            bounding_box_max: [1.0, 1.0, 1.0],
+            gravity: [0.0, -9.81, 0.0],
+
+            _padding0: [0.0; 1],
+            _padding1: [0.0; 1],
+            _padding2: [0.0; 1],
+        };
+        let simulation_params_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Simulation Parameters Buffer"),
+                contents: bytemuck::cast_slice(&[simulation_params]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
 
         // Particle Buffer Data
         let mut initial_particle_data = vec![0.0f32; (NUM_PARTICLES * 8) as usize];
-        //let mut rng = WyRand::new_seed(42);
-        //let mut unif = || rng.generate::<f32>() * 2f32 - 1f32;
         initial_particle_data
             .par_chunks_exact_mut(8)
             .for_each_init(WyRand::new, |rng, chunk| {
@@ -99,7 +128,29 @@ impl Application for Simulation {
             );
         }
 
-        // TODO: Particle bind groups
+        // Particle bind groups
+        let mut particle_bind_groups = Vec::<wgpu::BindGroup>::new();
+        for i in 0..2 {
+            particle_bind_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(&format!("Particle Bind Group {i}")),
+                layout: &compute_bind_group_layout,
+                entries: &[
+                    // Simulation Parameters
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: simulation_params_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: particle_buffers[i].as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: particle_buffers[(i + 1) % 2].as_entire_binding(),
+                    },
+                ],
+            }));
+        }
 
         let camera = camera::Camera::new(config, device, queue);
 
@@ -127,15 +178,23 @@ impl Application for Simulation {
         ];
         let light_buffer = lighting::LightBuffer::new(device, queue, lights);
 
-        // TODO
+        let work_group_count =
+            (NUM_PARTICLES as f32 / PARTICLES_PER_WORKGROUP as f32).ceil() as u32;
+
         Self {
+            simulation_params,
+            simulation_params_buffer,
+            compute_pipeline,
             render_pipeline,
             particle_buffers,
+            particle_bind_groups,
             particle_mesh,
             particle_material,
             camera,
             depth_texture,
             light_buffer,
+            work_group_count,
+            current_buffer: 0,
         }
     }
 
@@ -228,6 +287,18 @@ impl Application for Simulation {
             label: Some("Command Encoder"),
         });
 
+        // Compute pass
+        command_encoder.push_debug_group("Compute Pass");
+        {
+            let mut compute_pass =
+                command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("Compute Pass"),
+                });
+            compute_pass.set_pipeline(&self.compute_pipeline);
+            compute_pass.set_bind_group(0, &self.particle_bind_groups[self.current_buffer], &[]);
+            compute_pass.dispatch_workgroups(self.work_group_count, 1, 1);
+        }
+
         // Render pass
         command_encoder.push_debug_group("Render Pass");
         {
@@ -246,7 +317,35 @@ impl Application for Simulation {
 
         // Submit the command encoder
         queue.submit(Some(command_encoder.finish()));
+
+        // Swap the buffers for the next frame
+        self.current_buffer = (self.current_buffer + 1) % 2;
     }
+}
+
+/// Parameters for the simulation.
+/// Some don't change often, while others are updated every frame.
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct SimulationParams {
+    /// The timestep for this frame.
+    timestep: f32,
+    /// The viscosity of the fluid.
+    viscosity: f32,
+    /// The support radius of the fluid.
+    support_radius: f32,
+    /// The smoothing radius of the fluid.
+    smoothing_radius: f32,
+    /// Lower bound of the bounding box.
+    bounding_box_min: [f32; 3],
+    _padding0: [f32; 1],
+    /// Upper bound of the bounding box.
+    bounding_box_max: [f32; 3],
+    _padding1: [f32; 1],
+    /// Gravity vector.
+    gravity: [f32; 3],
+    _padding2: [f32; 1],
+    // TODO: Add more parameters here.
 }
 
 /// Creates the render pipeline.
@@ -317,4 +416,73 @@ fn create_render_pipeline(
     });
 
     render_pipeline
+}
+
+fn create_compute_pipeline(
+    _config: &wgpu::SurfaceConfiguration,
+    device: &wgpu::Device,
+    compute_bind_group_layout: &wgpu::BindGroupLayout,
+) -> wgpu::ComputePipeline {
+    let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Compute Shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("compute.wgsl").into()),
+    });
+
+    let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Compute Pipeline Layout"),
+        bind_group_layouts: &[&compute_bind_group_layout],
+        push_constant_ranges: &[],
+    });
+
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Compute Pipeline"),
+        layout: Some(&compute_pipeline_layout),
+        module: &compute_shader,
+        entry_point: "main",
+    });
+
+    compute_pipeline
+}
+
+fn compute_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    let compute_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Compute Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(
+                            std::mem::size_of::<SimulationParams>() as _,
+                        ),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 32) as _),
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 32) as _),
+                    },
+                    count: None,
+                },
+                // TODO: Add more bindings here.
+            ],
+        });
+    compute_bind_group_layout
 }
