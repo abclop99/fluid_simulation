@@ -15,7 +15,7 @@ use mesh::DrawMesh;
 
 const PARTICLES_PER_WORKGROUP: u32 = 256;
 
-const PARTICLE_RENDER_RADIUS: f32 = 0.025;
+const PARTICLE_RENDER_RADIUS: f32 = 0.05;
 
 const NUM_PARTICLES: u32 = 1_000;
 
@@ -95,12 +95,12 @@ impl Application for Simulation {
             smoothing_radius: 0.1,
             bounding_box_min: [-1.0, -1.0, -1.0],
             bounding_box_max: [1.0, 1.0, 1.0],
-            bounding_box_ks: 100.0,
-            bounding_box_kd: 3.0,
+            bounding_box_ks: 200.0,
+            bounding_box_kd: 5.0,
             gravity: [0.0, -9.81, 0.0],
 
-            particle_mass: 1.0 / (NUM_PARTICLES as f32),
-            rest_density: 2.0,
+            particle_mass: 0.5 / (NUM_PARTICLES as f32),
+            rest_density: 1.0,
             particle_stiffness: 1.5E0,
 
             padding: [0f32; 3],
