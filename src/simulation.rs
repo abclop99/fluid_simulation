@@ -25,7 +25,8 @@ pub struct Simulation {
     simulation_params: SimulationParams,
     simulation_params_buffer: wgpu::Buffer,
 
-    compute_pipeline: wgpu::ComputePipeline,
+    density_pipeline: wgpu::ComputePipeline,
+    integration_pipeline: wgpu::ComputePipeline,
     render_pipeline: wgpu::RenderPipeline,
     depth_texture: Texture,
 
@@ -84,22 +85,26 @@ impl Application for Simulation {
         queue: &wgpu::Queue,
     ) -> Self {
         let compute_bind_group_layout = compute_bind_group_layout(device);
-        let compute_pipeline = create_compute_pipeline(config, device, &compute_bind_group_layout);
+        let (density_pipeline, integration_pipeline) =
+            create_compute_pipelines(config, device, &compute_bind_group_layout);
         let render_pipeline = create_render_pipeline(config, device);
 
         // Simulation Parameters
         let simulation_params = SimulationParams {
             timestep: 0.01,
             viscosity: 0.0,
-            support_radius: 0.0,
-            smoothing_radius: 0.0,
+            smoothing_radius: 0.02,
             bounding_box_min: [-1.0, -1.0, -1.0],
             bounding_box_max: [1.0, 1.0, 1.0],
             bounding_box_ks: 10.0,
             bounding_box_kd: 0.01,
             gravity: [0.0, -9.81, 0.0],
 
-            _padding2: [0.0; 1],
+            particle_mass: PARTICLE_MASS,
+            rest_density: 0.01,
+            particle_stiffness: 1.0,
+
+            padding: [0f32; 3],
         };
         let simulation_params_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -117,8 +122,6 @@ impl Application for Simulation {
                 chunk[0] = rng.generate::<f32>() * 2f32 - 1f32;
                 chunk[1] = rng.generate::<f32>() * 2f32 - 1f32;
                 chunk[2] = rng.generate::<f32>() * 2f32 - 1f32;
-                // Mass
-                chunk[3] = PARTICLE_MASS;
                 // Velocity and Padding already 0
             });
 
@@ -192,7 +195,8 @@ impl Application for Simulation {
         Self {
             simulation_params,
             simulation_params_buffer,
-            compute_pipeline,
+            density_pipeline,
+            integration_pipeline,
             render_pipeline,
             particle_buffers,
             particle_bind_groups,
@@ -302,7 +306,11 @@ impl Application for Simulation {
                 command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                     label: Some("Compute Pass"),
                 });
-            compute_pass.set_pipeline(&self.compute_pipeline);
+            compute_pass.set_pipeline(&self.density_pipeline);
+            compute_pass.set_bind_group(0, &self.particle_bind_groups[self.current_buffer], &[]);
+            compute_pass.dispatch_workgroups(self.work_group_count, 1, 1);
+
+            compute_pass.set_pipeline(&self.integration_pipeline);
             compute_pass.set_bind_group(0, &self.particle_bind_groups[self.current_buffer], &[]);
             compute_pass.dispatch_workgroups(self.work_group_count, 1, 1);
         }
@@ -341,10 +349,10 @@ struct SimulationParams {
     timestep: f32,
     /// The viscosity of the fluid.
     viscosity: f32,
-    /// The support radius of the fluid.
-    support_radius: f32,
     /// The smoothing radius of the fluid.
     smoothing_radius: f32,
+    /// Mass of each particle
+    particle_mass: f32,
     /// Lower bound of the bounding box.
     bounding_box_min: [f32; 3],
     /// The "spring constant" for collisions with the bounding box.
@@ -355,8 +363,12 @@ struct SimulationParams {
     bounding_box_kd: f32,
     /// Gravity vector.
     gravity: [f32; 3],
-    _padding2: [f32; 1],
-    // TODO: Add more parameters here.
+    /// Target rest density
+    rest_density: f32,
+    /// Stiffness used to calculate pressure
+    particle_stiffness: f32,
+    /// Padding
+    padding: [f32; 3],
 }
 
 /// Creates the render pipeline.
@@ -427,11 +439,13 @@ fn create_render_pipeline(
     })
 }
 
-fn create_compute_pipeline(
+/// Returns the compute pipelines for the program
+///
+fn create_compute_pipelines(
     _config: &wgpu::SurfaceConfiguration,
     device: &wgpu::Device,
     compute_bind_group_layout: &wgpu::BindGroupLayout,
-) -> wgpu::ComputePipeline {
+) -> (wgpu::ComputePipeline, wgpu::ComputePipeline) {
     let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Compute Shader"),
         source: wgpu::ShaderSource::Wgsl(include_str!("compute.wgsl").into()),
@@ -443,12 +457,21 @@ fn create_compute_pipeline(
         push_constant_ranges: &[],
     });
 
-    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+    let density_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("Compute Pipeline"),
         layout: Some(&compute_pipeline_layout),
         module: &compute_shader,
-        entry_point: "main",
-    })
+        entry_point: "density_main",
+    });
+
+    let integration_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Compute Pipeline"),
+        layout: Some(&compute_pipeline_layout),
+        module: &compute_shader,
+        entry_point: "integration_main",
+    });
+
+    (density_pipeline, integration_pipeline)
 }
 
 fn compute_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
