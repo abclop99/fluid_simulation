@@ -15,10 +15,9 @@ use mesh::DrawMesh;
 
 const PARTICLES_PER_WORKGROUP: u32 = 256;
 
-const PARTICLE_RENDER_RADIUS: f32 = 0.01;
+const PARTICLE_RENDER_RADIUS: f32 = 0.025;
 
-const NUM_PARTICLES: u32 = 5_000;
-const PARTICLE_MASS: f32 = 0.01;
+const NUM_PARTICLES: u32 = 1_000;
 
 /// The fluid simulation.
 pub struct Simulation {
@@ -93,16 +92,16 @@ impl Application for Simulation {
         let simulation_params = SimulationParams {
             timestep: 0.01,
             viscosity: 0.0,
-            smoothing_radius: 0.02,
+            smoothing_radius: 0.1,
             bounding_box_min: [-1.0, -1.0, -1.0],
             bounding_box_max: [1.0, 1.0, 1.0],
-            bounding_box_ks: 10.0,
-            bounding_box_kd: 0.01,
+            bounding_box_ks: 100.0,
+            bounding_box_kd: 3.0,
             gravity: [0.0, -9.81, 0.0],
 
-            particle_mass: PARTICLE_MASS,
-            rest_density: 0.01,
-            particle_stiffness: 1.0,
+            particle_mass: 1.0 / (NUM_PARTICLES as f32),
+            rest_density: 2.0,
+            particle_stiffness: 1.5E0,
 
             padding: [0f32; 3],
         };
@@ -311,7 +310,11 @@ impl Application for Simulation {
             compute_pass.dispatch_workgroups(self.work_group_count, 1, 1);
 
             compute_pass.set_pipeline(&self.integration_pipeline);
-            compute_pass.set_bind_group(0, &self.particle_bind_groups[self.current_buffer], &[]);
+            compute_pass.set_bind_group(
+                0,
+                &self.particle_bind_groups[(self.current_buffer + 1) % 2],
+                &[],
+            );
             compute_pass.dispatch_workgroups(self.work_group_count, 1, 1);
         }
         command_encoder.pop_debug_group();
@@ -326,7 +329,7 @@ impl Application for Simulation {
             render_pass.draw_mesh(
                 &self.particle_mesh,
                 &self.particle_material,
-                &self.particle_buffers[0],
+                &self.particle_buffers[self.current_buffer],
                 0..NUM_PARTICLES,
             );
         }
@@ -336,7 +339,7 @@ impl Application for Simulation {
         queue.submit(Some(command_encoder.finish()));
 
         // Swap the buffers for the next frame
-        self.current_buffer = (self.current_buffer + 1) % 2;
+        //self.current_buffer = (self.current_buffer + 1) % 2;
     }
 }
 
@@ -402,7 +405,7 @@ fn create_render_pipeline(
                 wgpu::VertexBufferLayout {
                     array_stride: 4 * 4 * 2,
                     step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32, 4 => Float32x3],
+                    attributes: &wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32, 4 => Float32x3, 5 => Float32,],
                 },
             ],
         },

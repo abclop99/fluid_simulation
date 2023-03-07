@@ -67,8 +67,10 @@ fn density_main(
 		* (pow(density/params.rest_density, 7f) - 1f);
 
 	// Write back
-	particles_dst[index].density = density;
-	particles_dst[index].pressure = pressure;
+	particles_dst[index] = Particle(
+		(*particle).position, density,
+		(*particle).velocity, pressure
+	);
 }
 
 /// Calculates forces and integrates them
@@ -85,22 +87,22 @@ fn integration_main(
 
 	let particle = &particles_src[index];
 
-	var forces: vec3<f32> = vec3(0.0);
+	var acceleration: vec3<f32> = vec3(0.0);
 	
 	// Bounding boxes
-	forces = fma(vec3<f32>(
+	acceleration = fma(vec3<f32>(
 		max(params.bounding_box_min.x - (*particle).position.x, 0.0),
 		max(params.bounding_box_min.y - (*particle).position.y, 0.0),
 		max(params.bounding_box_min.z - (*particle).position.z, 0.0),
-	), vec3(params.bounding_box_ks), forces);
-	forces = fma(vec3<f32>(
+	), vec3(params.bounding_box_ks), acceleration);
+	acceleration = fma(vec3<f32>(
 		min(params.bounding_box_max.x - (*particle).position.x, 0.0),
 		min(params.bounding_box_max.y - (*particle).position.y, 0.0),
 		min(params.bounding_box_max.z - (*particle).position.z, 0.0),
-	), vec3(params.bounding_box_ks), forces);
+	), vec3(params.bounding_box_ks), acceleration);
 
 	// Damping
-	forces = fma(vec3<f32>(
+	acceleration = fma(vec3<f32>(
 			select(-(*particle).velocity.x, 0.0,
 				params.bounding_box_min.x <= (*particle).position.x && (*particle).position.x <= params.bounding_box_max.x),
 			select(-(*particle).velocity.y, 0.0, 
@@ -109,10 +111,11 @@ fn integration_main(
 				params.bounding_box_min.z <= (*particle).position.z && (*particle).position.z <= params.bounding_box_max.z)
 		),
 		vec3(params.bounding_box_kd),
-		forces
+		acceleration
 	);
 
-	var d_pressure = 0f;
+	// ∇p
+	var d_pressure: vec3<f32> = vec3(0f);
 
 	// Loop neighbor particles to calculate derivatives
 	var i: u32 = 0u;
@@ -121,12 +124,25 @@ fn integration_main(
 		let dist = distance((*particle).position, other.position);
 
 		// Ignore particles outside of support radius
-		if dist > params.smoothing_radius * 2f {
+		if dist > params.smoothing_radius * 2f || i == index {
 			continue;
 		}
 
 		// Derivative of pressure
-		// Using equation (9) from paper
+		// density_i * \sum_j (A_i/density_i^2 + A_j/density_j^2) ∇W_{ij}
+		if any(other.density != vec3(0f)) || any((*particle).density != vec3(0f)) {
+			d_pressure = fma(
+				vec3((*particle).density * params.particle_mass),
+				(
+					(
+						(*particle).pressure/((*particle).density * (*particle).density)
+						+ (other.pressure/(other.density * other.density))
+					)
+					* kernel_gradient(other.position - (*particle).position)
+				),
+				d_pressure
+			);
+		}
 
 		continuing {
 			i++;
@@ -134,8 +150,14 @@ fn integration_main(
 		}
 	}
 
-	var acceleration = params.gravity;
-	acceleration += forces / params.particle_mass;
+	//F_pressure = (-mass/density) * ∇p
+	if any((*particle).density != vec3(0f)) {
+		acceleration -= d_pressure / (*particle).density;
+	}
+
+	acceleration += params.gravity;
+
+	acceleration = clamp(acceleration, vec3(-1000f), vec3(1000f));
 
 	// Limit timestep (not adaptive for now)
 	let timestep = min(params.timestep, 0.016);
@@ -146,8 +168,8 @@ fn integration_main(
 
 	// Write back
 	particles_dst[index] = Particle(
-		new_position, 0f,
-		new_velocity, 0f,
+		new_position, (*particle).density,
+		new_velocity, (*particle).pressure,
 	);
 }
 
@@ -171,15 +193,14 @@ fn kernel(distance: f32) -> f32 {
 /// Computes the gradient of the kernel function.
 /// Input: other.position - this.position
 /// Output: Gradient vector
-fn kernel_gradient(difference: vec3<f32>) -> vec3<f32> {
-	let q: f32 = length(difference) / params.smoothing_radius;
-	let e: vec3<f32> = normalize(difference);
+fn kernel_gradient(displacement: vec3<f32>) -> vec3<f32> {
+	let q: f32 = length(displacement) / params.smoothing_radius;
+	let e: vec3<f32> = select(normalize(displacement), vec3(0f, 1f, 0f), all(displacement == vec3(0f)));
 
 	var df_dq: f32 = 0f;
 	if 0f <= q && q < 1f {
 		df_dq = (3f/2f) * q * q - 2f * q;
-	}
-	if 1f <= q && q < 2f {
+	} else if 1f <= q && q < 2f {
 		df_dq = -0.5 * (2f-q) * (2f-q);
 	}
 

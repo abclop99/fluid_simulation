@@ -28,8 +28,9 @@ struct VertexInput {
 	@location(1) normal: vec3<f32>,
 
 	@location(2) particle_position: vec3<f32>,
-	@location(3) particle_mass: f32,
+	@location(3) particle_density: f32,
 	@location(4) particle_velocity: vec3<f32>,
+	@location(5) particle_pressure: f32,
 }
 
 struct VertexOutput {
@@ -37,6 +38,8 @@ struct VertexOutput {
 	@location(0) particle_position: vec3<f32>,
 	@location(1) fragment_position: vec4<f32>,
 	@location(2) normal: vec3<f32>,
+	@location(3) density: f32,
+	@location(4) pressure: f32,
 }
 
 @vertex
@@ -52,6 +55,9 @@ fn vertex_main(
 	// Transfom the normal
 	out.normal = from_homogeneous( camera.normal_transform * vec4(in.normal, 0.0) );
 
+	out.density = in.particle_density;
+	out.pressure = in.particle_pressure;
+
 	return out;
 }
 
@@ -65,7 +71,7 @@ fn fragment_main(
 	let viewer = normalize( vec3<f32>(0.0, 0.0, 0.0) - from_homogeneous(fragment_position) );
 	let normal = normalize( in.normal );
 
-	var frag_color: vec4<f32> = material.emission;
+	var frag_color: vec4<f32> = material.emission + vec4(0.0001 * in.density, 0f, 0f, 1f);
 
 	let total_lights: u32 = arrayLength(&lights);
 	var light_num: u32 = u32(0);
