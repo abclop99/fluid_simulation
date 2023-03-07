@@ -279,6 +279,9 @@ fn start<E: Application>(
                 log::info!("Resizing to {:?}", size);
                 config.width = size.width.max(1);
                 config.height = size.height.max(1);
+                egui_state
+                    .winit_state
+                    .set_pixels_per_point(window.scale_factor() as f32);
                 program.resize(
                     &config,
                     window.scale_factor(),
