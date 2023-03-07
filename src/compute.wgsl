@@ -117,32 +117,47 @@ fn integration_main(
 	// ∇p
 	var d_pressure: vec3<f32> = vec3(0f);
 
+	// ∇^2 v
+	var d2_velocity: vec3<f32> = vec3(0f);
+
 	// Loop neighbor particles to calculate derivatives
 	var i: u32 = 0u;
 	loop {
 		let other = particles_src[i];
-		let dist = distance((*particle).position, other.position);
+		let x_ij = (*particle).position - other.position;
+		let dist = length(x_ij);
 
 		// Ignore particles outside of support radius
 		if dist > params.smoothing_radius * 2f || i == index {
 			continue;
 		}
 
+		let del_W_ij = kernel_gradient(-x_ij);
+
 		// Derivative of pressure
 		// density_i * \sum_j (A_i/density_i^2 + A_j/density_j^2) ∇W_{ij}
-		if any(other.density != vec3(0f)) || any((*particle).density != vec3(0f)) {
-			d_pressure = fma(
-				vec3((*particle).density * params.particle_mass),
+		d_pressure = fma(
+			vec3((*particle).density * params.particle_mass),
+			(
 				(
-					(
-						(*particle).pressure/((*particle).density * (*particle).density)
-						+ (other.pressure/(other.density * other.density))
-					)
-					* kernel_gradient(other.position - (*particle).position)
-				),
-				d_pressure
-			);
-		}
+					(*particle).pressure/((*particle).density * (*particle).density)
+					+ (other.pressure/(other.density * other.density))
+				)
+				* del_W_ij
+			),
+			d_pressure
+		);
+
+		// Laplacian of velocity (for viscosity)
+		// ∇^2 v = 2 \sum_j m_j/ρ_j * A_ij * (x_ij·∇W_ij)/(x_ij·x_ij + 0.01h^2)
+		d2_velocity = fma(
+			params.particle_mass * ((*particle).velocity - other.velocity) / other.density,
+			vec3(
+				dot(x_ij, del_W_ij)
+					/ (dot(x_ij, x_ij) + 0.01 * params.smoothing_radius * params.smoothing_radius),
+			),
+			d2_velocity
+		);
 
 		continuing {
 			i++;
@@ -150,13 +165,22 @@ fn integration_main(
 		}
 	}
 
+	// Finish calculating ∇^2 v by multiplying by 2
+	// TODO: Find out why I need to negate this when the source(s) don't say this.
+	d2_velocity *= -2.0;
+
 	//F_pressure = (-mass/density) * ∇p
 	if any((*particle).density != vec3(0f)) {
 		acceleration -= d_pressure / (*particle).density;
 	}
 
+	// F_viscosity = m * viscosity * ∇^2 v
+	acceleration = fma(vec3(params.viscosity), d2_velocity, acceleration);
+
 	acceleration += params.gravity;
 
+	// Clamp acceleration see problems more clearly
+	// because particles don't immediately dissapear
 	acceleration = clamp(acceleration, vec3(-1000f), vec3(1000f));
 
 	// Limit timestep (not adaptive for now)

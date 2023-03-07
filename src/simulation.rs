@@ -91,7 +91,7 @@ impl Application for Simulation {
         // Simulation Parameters
         let simulation_params = SimulationParams {
             timestep: 0.01,
-            viscosity: 0.0,
+            viscosity: 0.05,
             smoothing_radius: 0.1,
             bounding_box_min: [-1.0, -1.0, -1.0],
             bounding_box_max: [1.0, 1.0, 1.0],
