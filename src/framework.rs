@@ -115,6 +115,8 @@ async fn setup<E: Application>(title: &str) -> Setup {
     builder = builder.with_title(title);
     let window = builder.build(&event_loop).unwrap();
 
+    window.set_maximized(true);
+
     log::info!("Initializing the surface...");
 
     let backends = wgpu::util::backend_bits_from_env().unwrap_or_else(wgpu::Backends::all);
