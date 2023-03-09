@@ -128,7 +128,7 @@ fn integration_main(
 		let dist = length(x_ij);
 
 		// Ignore particles outside of support radius
-		if dist > params.smoothing_radius * 2f || i == index {
+		if dist > params.smoothing_radius * 2f {
 			continue;
 		}
 
