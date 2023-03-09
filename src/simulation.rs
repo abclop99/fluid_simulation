@@ -47,7 +47,8 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    /// Applies CPU-side updates
+    /// Applies CPU-side updates. Should be called after `update_egui` for the
+    /// simulation_params buffers to update properly.
     fn update(
         &mut self,
         _view: &wgpu::TextureView,
@@ -78,6 +79,15 @@ impl Simulation {
         let full_output = egui_state.ctx.run(input, |ctx| {
             egui::Window::new("Simulation Parameters").show(ctx, |ui| {
                 ui.heading("World Parameters");
+
+                // Maximum timestep
+                ui.horizontal(|ui| {
+                    ui.label("Maximum Timestep");
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.max_timestep).speed(0.001),
+                    );
+                });
+
                 // Gravity
                 ui.horizontal(|ui| {
                     ui.label("Gravity");
@@ -220,7 +230,8 @@ impl Application for Simulation {
             rest_density: 1.0,
             particle_stiffness: 1.5E0,
 
-            padding: [0f32; 3],
+            max_timestep: 1.0 / 60.0,
+            padding: [0f32; 2],
         };
         let simulation_params_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -530,8 +541,10 @@ struct SimulationParams {
     rest_density: f32,
     /// Stiffness used to calculate pressure
     particle_stiffness: f32,
+    /// Max timestep. Can be set, will be calculated.
+    max_timestep: f32,
     /// Padding
-    padding: [f32; 3],
+    padding: [f32; 2],
 }
 
 /// Creates the render pipeline.

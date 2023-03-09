@@ -10,7 +10,8 @@ struct SimParams {
 	gravity: vec3<f32>,
 	rest_density: f32,
 	particle_stiffness: f32,
-	// 3 word padding here
+	max_timestep: f32,
+	// 2 word padding here
 }
 
 @group(0) @binding(0) var<uniform> params: SimParams;
@@ -184,7 +185,7 @@ fn integration_main(
 	acceleration = clamp(acceleration, vec3(-1000f), vec3(1000f));
 
 	// Limit timestep (not adaptive for now)
-	let timestep = min(params.timestep, 0.016);
+	let timestep = min(params.timestep, params.max_timestep);
 
 	// Forward Euler
 	let new_velocity = fma(acceleration, vec3(timestep), (*particle).velocity);
