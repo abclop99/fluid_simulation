@@ -1,3 +1,4 @@
+use crate::texture::Texture;
 use std::time::{Duration, Instant};
 use winit::{
     event::{self, WindowEvent},
@@ -64,8 +65,10 @@ pub trait Application: 'static + Sized {
     fn resize(
         &mut self,
         config: &wgpu::SurfaceConfiguration,
+        scale_factor: f64,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        egui_state: &mut EguiState,
     );
 
     /// Called for any WindowEvent that is not handled by the framework.
@@ -77,8 +80,17 @@ pub trait Application: 'static + Sized {
         view: &wgpu::TextureView,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        egui_state: &mut EguiState,
+        window: &winit::window::Window, // egui_winit needs this
         timestep: Duration,
     );
+}
+
+pub struct EguiState {
+    pub ctx: egui::Context,
+    pub renderer: egui_wgpu::renderer::Renderer,
+    pub screen_descriptor: egui_wgpu::renderer::ScreenDescriptor,
+    pub winit_state: egui_winit::State,
 }
 
 struct Setup {
@@ -225,6 +237,21 @@ fn start<E: Application>(
     log::info!("Initializing the program...");
     let mut program = E::init(&config, &adapter, &device, &queue);
 
+    let mut egui_state = EguiState {
+        ctx: egui::Context::default(),
+        renderer: egui_wgpu::renderer::Renderer::new(
+            &device,
+            config.format,
+            Some(Texture::DEPTH_FORMAT),
+            1,
+        ),
+        screen_descriptor: egui_wgpu::renderer::ScreenDescriptor {
+            size_in_pixels: [config.width, config.height],
+            pixels_per_point: window.scale_factor() as f32,
+        },
+        winit_state: egui_winit::State::new(&event_loop),
+    };
+
     let mut last_frame_inst = Instant::now();
     let (mut frame_count, mut accum_time) = (0, 0.0);
 
@@ -252,37 +279,59 @@ fn start<E: Application>(
                 log::info!("Resizing to {:?}", size);
                 config.width = size.width.max(1);
                 config.height = size.height.max(1);
-                program.resize(&config, &device, &queue);
+                program.resize(
+                    &config,
+                    window.scale_factor(),
+                    &device,
+                    &queue,
+                    &mut egui_state,
+                );
                 surface.configure(&device, &config);
             }
-            event::Event::WindowEvent { event, .. } => match event {
-                WindowEvent::KeyboardInput {
-                    input:
-                        event::KeyboardInput {
-                            virtual_keycode: Some(event::VirtualKeyCode::Escape),
-                            state: event::ElementState::Pressed,
+            event::Event::WindowEvent { event, .. } => {
+                let response = egui_state.winit_state.on_event(&egui_state.ctx, &event);
+
+                // Don't pass event on if it was consumed by egui
+                if let egui_winit::EventResponse {
+                    consumed: false, ..
+                } = response
+                {
+                    match event {
+                        WindowEvent::KeyboardInput {
+                            input:
+                                event::KeyboardInput {
+                                    virtual_keycode: Some(event::VirtualKeyCode::Escape),
+                                    state: event::ElementState::Pressed,
+                                    ..
+                                },
                             ..
-                        },
-                    ..
-                }
-                | WindowEvent::CloseRequested => {
-                    *control_flow = ControlFlow::Exit;
-                }
-                WindowEvent::KeyboardInput {
-                    input:
-                        event::KeyboardInput {
-                            virtual_keycode: Some(event::VirtualKeyCode::R),
-                            state: event::ElementState::Pressed,
+                        }
+                        | WindowEvent::CloseRequested => {
+                            *control_flow = ControlFlow::Exit;
+                        }
+                        WindowEvent::KeyboardInput {
+                            input:
+                                event::KeyboardInput {
+                                    virtual_keycode: Some(event::VirtualKeyCode::R),
+                                    state: event::ElementState::Pressed,
+                                    ..
+                                },
                             ..
-                        },
-                    ..
-                } => {
-                    println!("{:#?}", instance.generate_report());
+                        } => {
+                            println!("{:#?}", instance.generate_report());
+                        }
+                        _ => {
+                            let response = egui_state.winit_state.on_event(&egui_state.ctx, &event);
+
+                            if let egui_winit::EventResponse { consumed: true, .. } = response {
+                                // Egui consumed the event, so we don't need to pass it to the program.
+                            } else {
+                                program.handle_event(event);
+                            }
+                        }
+                    }
                 }
-                _ => {
-                    program.handle_event(event);
-                }
-            },
+            }
             event::Event::RedrawRequested(_) => {
                 let timestep = last_frame_inst.elapsed();
 
@@ -317,7 +366,7 @@ fn start<E: Application>(
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                program.render(&view, &device, &queue, timestep);
+                program.render(&view, &device, &queue, &mut egui_state, &window, timestep);
 
                 frame.present();
             }

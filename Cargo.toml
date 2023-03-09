@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 bytemuck = { version = "1.13.1", features = ["derive"] }
 cgmath = { version = "0.18.0", features = ["swizzle"] }
+egui = { version = "0.21.0", features = ["extra_debug_asserts", "persistence"] }
+egui-wgpu = "0.21.0"
+egui-winit = "0.21.1"
 env_logger = "0.10.0"
 log = "0.4.17"
 nanorand = { version = "0.7.0", features = ["wyrand"] }

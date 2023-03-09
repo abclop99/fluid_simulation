@@ -1,10 +1,11 @@
 use crate::{
     camera::{self, BindCamera},
-    framework::Application,
+    framework::{Application, EguiState},
     lighting::{self, BindLights},
     mesh,
     texture::Texture,
 };
+use egui::epaint;
 use nanorand::{Rng, WyRand};
 use rayon::prelude::*;
 use std::time::Duration;
@@ -21,6 +22,7 @@ const NUM_PARTICLES: u32 = 1_000;
 
 /// The fluid simulation.
 pub struct Simulation {
+    // Egui
     simulation_params: SimulationParams,
     simulation_params_buffer: wgpu::Buffer,
 
@@ -62,6 +64,121 @@ impl Simulation {
             0,
             bytemuck::cast_slice(&[self.simulation_params]),
         );
+    }
+
+    fn update_egui(
+        &mut self,
+        egui_state: &mut EguiState,
+        window: &winit::window::Window,
+    ) -> (egui::TexturesDelta, Vec<epaint::ClippedPrimitive>) {
+        // Get winit input
+        let input = egui_state.winit_state.take_egui_input(window);
+
+        // Update settings with egui
+        let full_output = egui_state.ctx.run(input, |ctx| {
+            egui::Window::new("Simulation Parameters").show(ctx, |ui| {
+                ui.heading("World Parameters");
+                // Gravity
+                ui.horizontal(|ui| {
+                    ui.label("Gravity");
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.gravity[0]).speed(0.01),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.gravity[1]).speed(0.01),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.gravity[2]).speed(0.01),
+                    );
+                });
+
+                // Bounding Box limits
+                ui.horizontal(|ui| {
+                    ui.label("Bounding Box Min");
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.bounding_box_min[0])
+                            .speed(0.01),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.bounding_box_min[1])
+                            .speed(0.01),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.bounding_box_min[2])
+                            .speed(0.01),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Bounding Box Max");
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.bounding_box_max[0])
+                            .speed(0.01),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.bounding_box_max[1])
+                            .speed(0.01),
+                    );
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.bounding_box_max[2])
+                            .speed(0.01),
+                    );
+                });
+
+                ui.separator();
+
+                ui.heading("Particle Parameters");
+                // Viscosity
+                ui.horizontal(|ui| {
+                    ui.label("Viscosity");
+                    ui.add(egui::Slider::new(
+                        &mut self.simulation_params.viscosity,
+                        0.0..=0.5,
+                    ));
+                });
+                // Smoothing Radius
+                ui.horizontal(|ui| {
+                    ui.label("Smoothing Radius");
+                    ui.add(egui::Slider::new(
+                        &mut self.simulation_params.smoothing_radius,
+                        0.0001..=0.5,
+                    ));
+                });
+                // Particle Mass
+                ui.horizontal(|ui| {
+                    ui.label("Particle Mass");
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.particle_mass)
+                            .speed(0.001),
+                    );
+                });
+                // Rest Density
+                ui.horizontal(|ui| {
+                    ui.label("Rest Density");
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.rest_density).speed(0.001),
+                    );
+                });
+                // Particle Stiffness
+                ui.horizontal(|ui| {
+                    ui.label("Particle Stiffness");
+                    ui.add(
+                        egui::DragValue::new(&mut self.simulation_params.particle_stiffness)
+                            .speed(0.001),
+                    );
+                });
+            });
+        });
+
+        // Handle platform output
+        egui_state.winit_state.handle_platform_output(
+            window,
+            &egui_state.ctx,
+            full_output.platform_output,
+        );
+
+        let clipped_primitives = egui_state.ctx.tessellate(full_output.shapes);
+
+        (full_output.textures_delta, clipped_primitives)
     }
 }
 
@@ -212,11 +329,18 @@ impl Application for Simulation {
     fn resize(
         &mut self,
         config: &wgpu::SurfaceConfiguration,
+        scale_factor: f64,
         _device: &wgpu::Device,
         _queue: &wgpu::Queue,
+        egui_state: &mut EguiState,
     ) {
         self.camera.resize(config.width, config.height);
         self.depth_texture = Texture::create_depth_texture(_device, config, "Depth Texture");
+
+        egui_state.screen_descriptor = egui_wgpu::renderer::ScreenDescriptor {
+            size_in_pixels: [config.width, config.height],
+            pixels_per_point: scale_factor as f32,
+        };
     }
 
     fn handle_event(&mut self, event: winit::event::WindowEvent) {
@@ -262,8 +386,13 @@ impl Application for Simulation {
         view: &wgpu::TextureView,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        egui_state: &mut EguiState,
+        window: &winit::window::Window,
         timestep: Duration,
     ) {
+        // Egui
+        let (textures_delta, clipped_primitives) = self.update_egui(egui_state, window);
+
         self.update(view, device, queue, timestep);
 
         // Create render pass descriptor and its color attachments
@@ -297,6 +426,22 @@ impl Application for Simulation {
         let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Command Encoder"),
         });
+
+        let user_cmd_bufs = {
+            for (id, image_delta) in textures_delta.set {
+                egui_state
+                    .renderer
+                    .update_texture(device, queue, id, &image_delta)
+            }
+
+            egui_state.renderer.update_buffers(
+                device,
+                queue,
+                &mut command_encoder,
+                &clipped_primitives,
+                &egui_state.screen_descriptor,
+            )
+        };
 
         // Compute pass
         command_encoder.push_debug_group("Compute Pass");
@@ -332,11 +477,26 @@ impl Application for Simulation {
                 &self.particle_buffers[self.current_buffer],
                 0..NUM_PARTICLES,
             );
+
+            egui_state.renderer.render(
+                &mut render_pass,
+                &clipped_primitives,
+                &egui_state.screen_descriptor,
+            );
         }
         command_encoder.pop_debug_group();
 
+        for id in &textures_delta.free {
+            egui_state.renderer.free_texture(id);
+        }
+
         // Submit the command encoder
-        queue.submit(Some(command_encoder.finish()));
+        //queue.submit(Some(command_encoder.finish()));
+        queue.submit(
+            user_cmd_bufs
+                .into_iter()
+                .chain(Some(command_encoder.finish())),
+        );
 
         // Swap the buffers for the next frame
         //self.current_buffer = (self.current_buffer + 1) % 2;
