@@ -10,11 +10,16 @@ struct SimParams {
 	gravity: vec3<f32>,
 	rest_density: f32,
 	particle_stiffness: f32,
-	max_timestep: f32,
+
+	// Value is f32, but atomic must be u32 or i32. Must be bitcast befor using
+	// Compares fine if the float is positive.
+	// u32 was chosen so negative values > positive values because they are bad.
+	max_timestep: atomic<u32>,
+
 	// 2 word padding here
 }
 
-@group(0) @binding(0) var<uniform> params: SimParams;
+@group(0) @binding(0) var<storage, read_write> params: SimParams;
 @group(0) @binding(1) var<storage, read> particles_src: array<Particle>;
 @group(0) @binding(2) var<storage, read_write> particles_dst: array<Particle>;
 
@@ -66,6 +71,13 @@ fn density_main(
 
 	let pressure = params.particle_stiffness
 		* (pow(density/params.rest_density, 7f) - 1f);
+	
+	// Calculate max timestep for this particle (before applying forces)
+	// It would be better to apply after the forces, but that would require
+	// another pipeline stage.
+	// Δt <= 0.4 (h/v_max)
+	let max_timestep = bitcast<u32>(0.4 * params.smoothing_radius / length((*particle).velocity));
+	atomicMin(&params.max_timestep, max_timestep);
 
 	// Write back
 	particles_dst[index] = Particle(
@@ -185,7 +197,8 @@ fn integration_main(
 	acceleration = clamp(acceleration, vec3(-1000f), vec3(1000f));
 
 	// Limit timestep (not adaptive for now)
-	let timestep = min(params.timestep, params.max_timestep);
+	let max_timestep = bitcast<f32>(params.max_timestep);
+	let timestep = min(params.timestep, max_timestep);
 
 	// Forward Euler
 	let new_velocity = fma(acceleration, vec3(timestep), (*particle).velocity);

@@ -237,7 +237,9 @@ impl Application for Simulation {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Simulation Parameters Buffer"),
                 contents: bytemuck::cast_slice(&[simulation_params]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::UNIFORM
+                    | wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST,
             });
 
         // Particle Buffer Data
@@ -658,7 +660,7 @@ fn compute_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 binding: 0,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
                     has_dynamic_offset: false,
                     min_binding_size: wgpu::BufferSize::new(
                         std::mem::size_of::<SimulationParams>() as _,
