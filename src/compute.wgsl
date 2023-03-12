@@ -225,7 +225,7 @@ fn kernel(distance: f32) -> f32 {
 
 	f_q *= 3f / (2f * PI);
 
-	return f_q / pow(params.smoothing_radius, 3f);
+	return (f_q / pow(params.smoothing_radius, 3f));
 }
 
 /// Computes the gradient of the kernel function.
@@ -242,5 +242,7 @@ fn kernel_gradient(displacement: vec3<f32>) -> vec3<f32> {
 		df_dq = -0.5 * (2f-q) * (2f-q);
 	}
 
-	return e * ( df_dq /pow(params.smoothing_radius, 4f));
+	df_dq *= 3f / (2f * PI);
+
+	return (e * ( df_dq /pow(params.smoothing_radius, 4f)));
 }
