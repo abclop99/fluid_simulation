@@ -164,7 +164,7 @@ fn integration_main(
 		// Laplacian of velocity (for viscosity)
 		// ∇^2 v = 2 \sum_j m_j/ρ_j * A_ij * (x_ij·∇W_ij)/(x_ij·x_ij + 0.01h^2)
 		d2_velocity = fma(
-			params.particle_mass * ((*particle).velocity - other.velocity) / other.density,
+			params.particle_mass / other.density * ((*particle).velocity - other.velocity),
 			vec3(
 				dot(x_ij, del_W_ij)
 					/ (dot(x_ij, x_ij) + 0.01 * params.smoothing_radius * params.smoothing_radius),

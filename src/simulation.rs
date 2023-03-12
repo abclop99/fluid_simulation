@@ -16,9 +16,9 @@ use mesh::DrawMesh;
 
 const PARTICLES_PER_WORKGROUP: u32 = 256;
 
-const PARTICLE_RENDER_RADIUS: f32 = 0.05;
+const PARTICLE_RENDER_RADIUS: f32 = 0.03;
 
-const NUM_PARTICLES: u32 = 1_000;
+const NUM_PARTICLES: u32 = 2_000;
 
 /// The fluid simulation.
 pub struct Simulation {
@@ -228,7 +228,7 @@ impl Application for Simulation {
 
             particle_mass: 0.5 / (NUM_PARTICLES as f32),
             rest_density: 1.0,
-            particle_stiffness: 1.5E0,
+            particle_stiffness: 1.0E0,
 
             max_timestep: 1.0 / 60.0,
             padding: [0f32; 2],
