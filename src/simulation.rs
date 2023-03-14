@@ -67,10 +67,32 @@ impl Simulation {
         );
     }
 
+    /// Reinitializes particles to a random distribution.
+    /// and sets the buffers.
+    fn reinitialize_particles(&mut self, queue: &wgpu::Queue) {
+        // Particle Buffer Data
+        let mut initial_particle_data = vec![0.0f32; (NUM_PARTICLES * 8) as usize];
+        initial_particle_data
+            .par_chunks_exact_mut(8)
+            .for_each_init(WyRand::new, |rng, chunk| {
+                // Position
+                chunk[0] = rng.generate::<f32>() * 2f32 - 1f32;
+                chunk[1] = rng.generate::<f32>() * 2f32 - 1f32;
+                chunk[2] = rng.generate::<f32>() * 2f32 - 1f32;
+                // Velocity and Padding already 0
+            });
+
+        // Set the buffers
+        self.particle_buffers.iter_mut().for_each(|buffer| {
+            queue.write_buffer(buffer, 0, bytemuck::cast_slice(&initial_particle_data));
+        });
+    }
+
     fn update_egui(
         &mut self,
         egui_state: &mut EguiState,
         window: &winit::window::Window,
+        queue: &wgpu::Queue,
     ) -> (egui::TexturesDelta, Vec<epaint::ClippedPrimitive>) {
         // Get winit input
         let input = egui_state.winit_state.take_egui_input(window);
@@ -175,6 +197,15 @@ impl Simulation {
                         egui::DragValue::new(&mut self.simulation_params.particle_stiffness)
                             .speed(0.001),
                     );
+                });
+
+                ui.separator();
+
+                ui.heading("Reinitialize particles");
+                ui.horizontal(|ui| {
+                    if ui.button("Reinitialize").clicked() {
+                        self.reinitialize_particles(queue);
+                    }
                 });
             });
         });
@@ -404,7 +435,7 @@ impl Application for Simulation {
         timestep: Duration,
     ) {
         // Egui
-        let (textures_delta, clipped_primitives) = self.update_egui(egui_state, window);
+        let (textures_delta, clipped_primitives) = self.update_egui(egui_state, window, queue);
 
         self.update(view, device, queue, timestep);
 
